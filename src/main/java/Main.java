@@ -5,6 +5,7 @@ import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class Main {
     public static void main(String[] args) {
@@ -20,18 +21,69 @@ public class Main {
             program.input(new FileReader(logPath));
 
         } catch (Exception e) {
-            try (BufferedWriter bw = new BufferedWriter(new FileWriter(new File("output.txt")))) {
+            try (BufferedWriter bw = new BufferedWriter(new FileWriter(new File("output.html")))) {
                 bw.write(e.getMessage());
             } catch (IOException e1) {
+                e1.printStackTrace();
             }
             return;
         }
 
         try {
-            program.output(new FileWriter(new File("output.txt")));
+            program.output(new FileWriter(new File("output.html")));
             program.saveRecord(new FileOutputStream(new File("data.txt")));
         } catch (Exception e) {
+            e.printStackTrace();
         }
+    }
+
+
+    private class Deck {
+        private final String deckId;
+        private final String deckName;
+        private final double winrate;
+
+        public Deck(String deckId, String deckName, long win, long lose) {
+            this.deckId = deckId;
+            this.deckName = deckName;
+            this.winrate = win == 0 ? 0 : win / (double) (win + lose);
+        }
+
+        public String getDeckId() {
+            return deckId;
+        }
+
+        public String getDeckName() {
+            return deckName;
+        }
+
+        public double getWinrate() {
+            return winrate;
+        }
+    }
+
+    private static String h2(String title) {
+        return "<h2>" + title + "</h2>";
+    }
+
+    private static String h3(String title) {
+        return "<h3>" + title + "</h3>";
+    }
+
+    private static String h4(String title) {
+        return "<h4>" + title + "</h4>";
+    }
+
+    private static List<String> td(int columns, int c, String... tds) {
+        return IntStream.range(0, columns).mapToObj(j -> tds[c * columns + j]).collect(Collectors.toList());
+    }
+
+    private static List<String> tr(int columns, String... tds) {
+        return IntStream.range(0, tds.length / columns).mapToObj(i -> "<td width='400px'>" + String.join("</td><td>", td(columns, i, tds)) + "<td>").collect(Collectors.toList());
+    }
+
+    private static String table(int columns, String... tds) {
+        return "<table><tr>" + String.join("</tr><tr>", tr(columns, tds)) + "</tr></table>";
     }
 
     //player info
@@ -203,192 +255,208 @@ public class Main {
             bw.write(new SimpleDateFormat("yyyy-MM-dd hh:mm:ss").format(new Date()));
             bw.newLine();
 
-            bw.write("VAULT: " + vaultProgress);
+            bw.write(h2("User Info"));
             bw.newLine();
+            bw.write("VAULT: " + vaultProgress + "%");
+            bw.newLine();
+
             {
-                bw.write("---CONSTRUCTED---");
-                bw.newLine();
-                bw.write("  W: " + constructedMatchesWon);
-                bw.newLine();
-                bw.write("  L: " + constructedMatchesLost);
-                bw.newLine();
-                //bw.write("\tD: " + program.constructedMatchesDrawn);
-                //bw.newLine();
+                bw.write(h3("---CONSTRUCTED---"));
+
                 double constructedWinRatio = 100.0 * constructedMatchesWon / (constructedMatchesWon + constructedMatchesLost);
-                bw.write("  Winning Percentage: " + String.format("%.1f", constructedWinRatio) + "%");
+                bw.write(table(2,
+                        "WIN:", Integer.toString(constructedMatchesWon),
+                        "LOSE:", Integer.toString(constructedMatchesLost),
+                        // "DRAW:", Integer.toString(constructedMatchesDrawn)
+                        "Winning Percentage:", String.format("%.1f", constructedWinRatio) + "%"
+                ));
                 bw.newLine();
             }
             {
-                bw.write("---LIMITED---");
-                bw.newLine();
-                bw.write("  W: " + limitedMatchesWon);
-                bw.newLine();
-                bw.write("  L: " + limitedMatchesLost);
-                bw.newLine();
-                //bw.write("\tD: " + program.limitedMatchesDrawn);
-                //bw.newLine();
+                bw.write(h3("---LIMITED---"));
                 double limitedWinRatio = 100.0 * limitedMatchesWon / (limitedMatchesWon + limitedMatchesLost);
-                bw.write("  Winning Percentage: " + String.format("%.1f", limitedWinRatio) + "%");
+                bw.write(table(2,
+                        "WIN:", Integer.toString(limitedMatchesWon),
+                        "LOSE:", Integer.toString(limitedMatchesLost),
+                        // "DRAW:", Integer.toString(limitedMatchesDrawn)
+                        "Winning Percentage:", String.format("%.1f", limitedWinRatio) + "%"
+                ));
                 bw.newLine();
             }
-            bw.newLine();
-            bw.newLine();
 
+            List<Deck> deckList = log.stream().map(d -> d.getDeckId()).distinct()
+                    .map(deckId -> {
+                        List<Record> deckRecord = log.stream().filter(d -> deckId.equals(d.getDeckId())).collect(Collectors.toList());
+                        String deckName = deckRecord.stream().sorted(Comparator.comparing(Record::getTimestamp).reversed()).findFirst().get().getDeckName(); //最新のデッキ名
+                        long win = deckRecord.stream().filter(d -> d.getWin()).count();
+                        long lose = deckRecord.stream().filter(d -> !d.getWin()).count();
+
+                        return new Deck(deckId, deckName, win, lose);
+                    }).sorted(Comparator.comparing(Deck::getWinrate).reversed()).collect(Collectors.toList()); //全体の勝率順
+
+            bw.write(h2("Deck Info"));
+            bw.newLine();
             for (String event : log.stream().map(d -> d.getEventName()).distinct().collect(Collectors.toList())) {
-                bw.write("---" + event + "---");
+                bw.write(h3("---" + event + "---"));
                 bw.newLine();
 
-                for (String deckId : log.stream().map(d -> d.getDeckId()).distinct().collect(Collectors.toList())) {
-                    List<Record> records = log.stream().filter(d -> event.equals(d.getEventName()) && deckId.equals(d.getDeckId())).collect(Collectors.toList());
+                List<Record> eventRecords = log.stream().filter(d -> event.equals(d.getEventName())).collect(Collectors.toList());
+                for (Deck deck : deckList) {
+                    List<Record> records = eventRecords.stream().filter(d -> deck.getDeckId().equals(d.getDeckId())).collect(Collectors.toList());
                     if (records.isEmpty()) {
                         continue;
                     }
 
-                    String deckName = records.stream().sorted(Comparator.comparing(Record::getTimestamp).reversed()).findFirst().get().getDeckName();
-                    bw.write(deckName);
+                    bw.write(h4(deck.getDeckName()));
                     bw.newLine();
                     {
                         long win = records.stream().filter(d -> d.getWin()).count();
                         long lose = records.stream().filter(d -> !d.getWin()).count();
                         double winRatio = 100.0 * win / (win + lose);
-                        bw.write("  W: " + win);
-                        bw.newLine();
-                        bw.write("  L: " + lose);
-                        bw.newLine();
-                        //bw.write("\tD: " + (records.stream().count() - win - lose));
-                        //bw.newLine();
-                        bw.write("  Winning Percentage: " + String.format("%.1f", winRatio) + "%");
-                        bw.newLine();
-                    }
-                    {
+
                         List<Record> playFirstRecords = records.stream().filter(d -> d.getPlayFirst()).collect(Collectors.toList());
                         long winF = playFirstRecords.stream().filter(d -> d.getWin()).count();
                         long loseF = playFirstRecords.stream().filter(d -> !d.getWin()).count();
                         double winRatioF = 100.0 * winF / (winF + loseF);
-                        bw.write("  Winning Percentage(play first): " + String.format("%.1f", winRatioF) + "%");
-                        bw.newLine();
-                    }
-                    {
+
                         List<Record> drawFirstRecords = records.stream().filter(d -> !d.getPlayFirst()).collect(Collectors.toList());
                         long winA = drawFirstRecords.stream().filter(d -> d.getWin()).count();
                         long loseA = drawFirstRecords.stream().filter(d -> !d.getWin()).count();
                         double winRatioA = 100.0 * winA / (winA + loseA);
-                        bw.write("  Winning Percentage(draw first): " + String.format("%.1f", winRatioA) + "%");
-                        bw.newLine();
-                    }
-                    {
+
                         List<Record> mythicRecords = records.stream().filter(d -> "Mythic".equals(d.getOpponentRankClass())).collect(Collectors.toList());
-                        long win = mythicRecords.stream().filter(d -> d.getWin()).count();
-                        long lose = mythicRecords.stream().filter(d -> !d.getWin()).count();
-                        double winRatio = 100.0 * win / (win + lose);
-                        bw.write("  Winning Percentage vs Mythic Rank: " + String.format("%.1f", winRatio) + "%");
-                        bw.newLine();
+                        long winM = mythicRecords.stream().filter(d -> d.getWin()).count();
+                        long loseM = mythicRecords.stream().filter(d -> !d.getWin()).count();
+                        double winRatioM = 100.0 * winM / (winM + loseM);
 
-                        List<Record> playFirstRecords = mythicRecords.stream().filter(d -> d.getPlayFirst()).collect(Collectors.toList());
-                        long winF = playFirstRecords.stream().filter(d -> d.getWin()).count();
-                        long loseF = playFirstRecords.stream().filter(d -> !d.getWin()).count();
-                        double winRatioF = 100.0 * winF / (winF + loseF);
-                        bw.write("  Winning Percentage vs Mythic Rank(play first): " + String.format("%.1f", winRatioF) + "%");
-                        bw.newLine();
+                        List<Record> mythicPlayFirstRecords = mythicRecords.stream().filter(d -> d.getPlayFirst()).collect(Collectors.toList());
+                        long winMF = mythicPlayFirstRecords.stream().filter(d -> d.getWin()).count();
+                        long loseMF = mythicPlayFirstRecords.stream().filter(d -> !d.getWin()).count();
+                        double winRatioMF = 100.0 * winMF / (winMF + loseMF);
 
-                        List<Record> drawFirstRecords = mythicRecords.stream().filter(d -> !d.getPlayFirst()).collect(Collectors.toList());
-                        long winA = drawFirstRecords.stream().filter(d -> d.getWin()).count();
-                        long loseA = drawFirstRecords.stream().filter(d -> !d.getWin()).count();
-                        double winRatioA = 100.0 * winA / (winA + loseA);
-                        bw.write("  Winning Percentage vs Mythic Rank(draw first): " + String.format("%.1f", winRatioA) + "%");
+                        List<Record> mythicDrawFirstRecords = mythicRecords.stream().filter(d -> !d.getPlayFirst()).collect(Collectors.toList());
+                        long winMA = mythicDrawFirstRecords.stream().filter(d -> d.getWin()).count();
+                        long loseMA = mythicDrawFirstRecords.stream().filter(d -> !d.getWin()).count();
+                        double winRatioMA = 100.0 * winMA / (winMA + loseMA);
+
+                        bw.write(table(2,
+                                "WIN:", Long.toString(win),
+                                "LOSE:", Long.toString(lose),
+                                // "DRAW:", Long.toString((records.stream().count() - win - lose))
+                                "Winning Percentage:", String.format("%.1f", winRatio) + "%",
+                                "Winning Percentage(play first):", String.format("%.1f", winRatioF) + "%",
+                                "Winning Percentage(draw first):", String.format("%.1f", winRatioA) + "%",
+                                "Winning Percentage vs Mythic Rank:", String.format("%.1f", winRatioM) + "%",
+                                "Winning Percentage vs Mythic Rank(play first):", String.format("%.1f", winRatioMF) + "%",
+                                "Winning Percentage vs Mythic Rank(draw first):", String.format("%.1f", winRatioMA) + "%"
+                        ));
                         bw.newLine();
                     }
-                    bw.newLine();
-
+                    bw.write("<details>");
                     {
                         List<Record> mulliganRecords = records.stream().filter(d -> d.getMulliganedCount() != 0).collect(Collectors.toList());
                         double mulliganRatio = 100.0 * mulliganRecords.size() / records.size();
-                        bw.write("  Mulligan Percentage: " + String.format("%.1f", mulliganRatio) + "%");
-                        bw.newLine();
                         double mulliganCount = mulliganRecords.isEmpty() ? Double.NaN : mulliganRecords.stream().mapToInt(d -> d.getMulliganedCount()).average().getAsDouble();
-                        bw.write("  Average Mulligan Count when to Mulligan: " + String.format("%.1f", mulliganCount));
+
+                        bw.write(table(2,
+                                "Mulligan Percentage:", String.format("%.1f", mulliganRatio) + "%",
+                                "Average Mulligan Count when to Mulligan:", String.format("%.1f", mulliganCount)
+                        ));
                         bw.newLine();
                     }
                     {
                         double turn = records.stream().mapToInt(d -> d.getTurnCount()).average().getAsDouble();
-                        bw.write("  Average Turn: " + String.format("%.1f", turn));
-                        bw.newLine();
+
                         int duration = (int) records.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
                         int hour = duration / 3600;
                         int minute = (duration % 3600) / 60;
                         int second = (duration % 3600) % 60;
-                        bw.write("  Average Duration: " + String.format("%02d:%02d:%02d", hour, minute, second));
-                        bw.newLine();
 
-                        double land = records.stream().mapToInt(d -> d.getMaxLands()).average().getAsDouble();
-                        bw.write("  Average Max Lands: " + String.format("%.1f", land));
-                        bw.newLine();
-                        double creature = records.stream().mapToInt(d -> d.getMaxCreatures()).average().getAsDouble();
-                        bw.write("  Average Max Creatures: " + String.format("%.1f", creature));
-                        bw.newLine();
-                        //double permanent = records.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).average().getAsDouble(); //else creature
-                        //bw.write("  Average Max Artifacts and Enchantments: " + String.format("%.1f", permanent));
-                        //bw.newLine();
-                        double cast = records.stream().mapToInt(d -> d.getSpellCastCount()).average().getAsDouble();
-                        bw.write("  Average Spell Cast Count: " + String.format("%.1f", cast));
+                        List<Integer> lands = records.stream().mapToInt(d -> d.getMaxLands()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> creatures = records.stream().mapToInt(d -> d.getMaxCreatures()).sorted().boxed().collect(Collectors.toList());
+                        //List<Integer> permanents = records.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> casts = records.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
+
+                        bw.write(table(2,
+                                "Average Turn:", String.format("%.1f", turn),
+                                "Average Duration:", String.format("%02d:%02d:%02d", hour, minute, second),
+
+                                "Average Max Lands:", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures:", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments:", String.format("%.1f", permanent),
+                                "Average Spell Cast Count:", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+
+                                "Median Max Lands:", Integer.toString(lands.get(lands.size() / 2)),
+                                "Median Max Creatures:", Integer.toString(creatures.get(creatures.size() / 2)),
+                                //"Median Max Artifacts and Enchantments:", String.format("%.1f", permanent),
+                                "Median Spell Cast Count:", Integer.toString(casts.get(casts.size() / 2))
+                        ));
                         bw.newLine();
                     }
-                    bw.newLine();
 
                     List<Record> winRecords = records.stream().filter(d -> d.getWin()).collect(Collectors.toList());
                     if (!winRecords.isEmpty()) {
-
                         double turn = winRecords.stream().mapToInt(d -> d.getTurnCount()).average().getAsDouble();
-                        bw.write("  Average Turn(when you Win): " + String.format("%.1f", turn));
-                        bw.newLine();
+
                         int duration = (int) winRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
                         int hour = duration / 3600;
                         int minute = (duration % 3600) / 60;
                         int second = (duration % 3600) % 60;
-                        bw.write("  Average Duration(when you Win): " + String.format("%02d:%02d:%02d", hour, minute, second));
-                        bw.newLine();
 
-                        double land = winRecords.stream().mapToInt(d -> d.getMaxLands()).average().getAsDouble();
-                        bw.write("  Average Max Lands(when you Win): " + String.format("%.1f", land));
-                        bw.newLine();
-                        double creature = winRecords.stream().mapToInt(d -> d.getMaxCreatures()).average().getAsDouble();
-                        bw.write("  Average Max Creatures(when you Win): " + String.format("%.1f", creature));
-                        bw.newLine();
-                        //double permanent = winRecords.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).average().getAsDouble(); //else creature
-                        //bw.write("  Average Max Artifacts and Enchantments(when you Win): " + String.format("%.1f", permanent));
-                        //bw.newLine();
-                        double cast = winRecords.stream().mapToInt(d -> d.getSpellCastCount()).average().getAsDouble();
-                        bw.write("  Average Spell Cast Count(when you Win): " + String.format("%.1f", cast));
-                        bw.newLine();
+                        List<Integer> lands = winRecords.stream().mapToInt(d -> d.getMaxLands()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> creatures = winRecords.stream().mapToInt(d -> d.getMaxCreatures()).sorted().boxed().collect(Collectors.toList());
+                        //List<Integer> permanents = winRecords.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> casts = winRecords.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
+
+                        bw.write(table(2,
+                                "Average Turn(When you win):", String.format("%.1f", turn),
+                                "Average Duration(When you win):", String.format("%02d:%02d:%02d", hour, minute, second),
+
+                                "Average Max Lands(When you win):", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures(When you win):", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments(When you win):", String.format("%.1f", permanent),
+                                "Average Spell Cast Count(When you win):", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+
+                                "Median Max Lands(When you win):", Integer.toString(lands.get(lands.size() / 2)),
+                                "Median Max Creatures(When you win):", Integer.toString(creatures.get(creatures.size() / 2)),
+                                //"Median Max Artifacts and Enchantments(When you win):", String.format("%.1f", permanent),
+                                "Median Spell Cast Count(When you win):", Integer.toString(casts.get(casts.size() / 2))
+                        ));
                         bw.newLine();
                     }
 
                     List<Record> loseRecords = records.stream().filter(d -> !d.getWin()).collect(Collectors.toList());
                     if (!loseRecords.isEmpty()) {
                         double turn = loseRecords.stream().mapToInt(d -> d.getTurnCount()).average().getAsDouble();
-                        bw.write("  Average Turn(when you Lose): " + String.format("%.1f", turn));
-                        bw.newLine();
+
                         int duration = (int) loseRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
                         int hour = duration / 3600;
                         int minute = (duration % 3600) / 60;
                         int second = (duration % 3600) % 60;
-                        bw.write("  Average Duration(when you Lose): " + String.format("%02d:%02d:%02d", hour, minute, second));
-                        bw.newLine();
 
-                        double land = loseRecords.stream().mapToInt(d -> d.getMaxLands()).average().getAsDouble();
-                        bw.write("  Average Max Lands(when you Lose): " + String.format("%.1f", land));
-                        bw.newLine();
-                        double creature = loseRecords.stream().mapToInt(d -> d.getMaxCreatures()).average().getAsDouble();
-                        bw.write("  Average Max Creatures(when you Lose): " + String.format("%.1f", creature));
-                        bw.newLine();
-                        //double permanent = list.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).average().getAsDouble(); //else creature
-                        //bw.write("  Average Max Artifacts and Enchantments(when you Lose): " + String.format("%.1f", permanent));
-                        //bw.newLine();
-                        double cast = loseRecords.stream().mapToInt(d -> d.getSpellCastCount()).average().getAsDouble();
-                        bw.write("  Average Spell Cast Count(when you Lose): " + String.format("%.1f", cast));
-                        bw.newLine();
+                        List<Integer> lands = loseRecords.stream().mapToInt(d -> d.getMaxLands()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> creatures = loseRecords.stream().mapToInt(d -> d.getMaxCreatures()).sorted().boxed().collect(Collectors.toList());
+                        //List<Integer> permanents = loseRecords.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
+                        List<Integer> casts = loseRecords.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
+
+                        bw.write(table(2,
+                                "Average Turn(When you lose):", String.format("%.1f", turn),
+                                "Average Duration(When you lose):", String.format("%02d:%02d:%02d", hour, minute, second),
+
+                                "Average Max Lands(When you lose):", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures(When you lose):", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments(When you lose):", String.format("%.1f", permanent),
+                                "Average Spell Cast Count(When you lose):", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+
+                                "Median Max Lands(When you lose):", Integer.toString(lands.get(lands.size() / 2)),
+                                "Median Max Creatures(When you lose):", Integer.toString(creatures.get(creatures.size() / 2)),
+                                //"Median Max Artifacts and Enchantments(When you lose):", String.format("%.1f", permanent),
+                                "Median Spell Cast Count(When you lose):", Integer.toString(casts.get(casts.size() / 2))
+                        ));
                         bw.newLine();
                     }
+                    bw.write("</details>");
+                    bw.newLine();
                 }
                 bw.newLine();
             }
