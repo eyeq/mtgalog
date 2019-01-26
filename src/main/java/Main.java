@@ -1,6 +1,3 @@
-import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -9,7 +6,7 @@ import java.util.stream.IntStream;
 
 public class Main {
     public static void main(String[] args) {
-        Main program = new Main();
+        Parser parser = new Parser();
 
         try {
             String logPath;
@@ -17,10 +14,13 @@ public class Main {
                 logPath = br.readLine();
             }
 
-            program.loadRecord(new FileInputStream(new File("data.txt")));
-            program.input(new FileReader(logPath));
+            parser.loadRecord(new FileInputStream(new File("data.txt")));
+            parser.loadCardLibrary(new FileReader("cardlist.json"));
 
+            parser.readLog(new FileReader(logPath));
         } catch (Exception e) {
+            e.printStackTrace();
+
             try (BufferedWriter bw = new BufferedWriter(new FileWriter(new File("output.html")))) {
                 bw.write(e.getMessage());
             } catch (IOException e1) {
@@ -30,37 +30,14 @@ public class Main {
         }
 
         try {
-            program.output(new FileWriter(new File("output.html")));
-            program.saveRecord(new FileOutputStream(new File("data.txt")));
+            output(new FileWriter(new File("output.html")), parser);
+            parser.saveRecord(new FileOutputStream(new File("data.txt")));
         } catch (Exception e) {
             e.printStackTrace();
         }
+        System.out.println("finished");
     }
 
-
-    private class Deck {
-        private final String deckId;
-        private final String deckName;
-        private final double winrate;
-
-        public Deck(String deckId, String deckName, long win, long lose) {
-            this.deckId = deckId;
-            this.deckName = deckName;
-            this.winrate = win == 0 ? 0 : win / (double) (win + lose);
-        }
-
-        public String getDeckId() {
-            return deckId;
-        }
-
-        public String getDeckName() {
-            return deckName;
-        }
-
-        public double getWinrate() {
-            return winrate;
-        }
-    }
 
     private static String h2(String title) {
         return "<h2>" + title + "</h2>";
@@ -79,194 +56,83 @@ public class Main {
     }
 
     private static List<String> tr(int columns, String... tds) {
-        return IntStream.range(0, tds.length / columns).mapToObj(i -> "<td width='400px'>" + String.join("</td><td>", td(columns, i, tds)) + "<td>").collect(Collectors.toList());
+        return IntStream.range(0, tds.length / columns).mapToObj(i -> "<td width='400px'>" + String.join("</td><td>", td(columns, i, tds)) + "</td>").collect(Collectors.toList());
     }
 
     private static String table(int columns, String... tds) {
-        return "<table><tr>" + String.join("</tr><tr>", tr(columns, tds)) + "</tr></table>";
+        String[] t = Arrays.stream(tds).map(d -> "<u>" + ("NaN%".equals(d) ? "--.-%" : d) + "</u>").toArray(String[]::new);
+        return "<table><tr>" + String.join("</tr><tr>", tr(columns, t)) + "</tr></table>";
     }
 
-    //player info
-    private int constructedMatchesWon = 0;
-    private int constructedMatchesLost = 0;
-    private int constructedMatchesDrawn = 0;
-    private int limitedMatchesWon = 0;
-    private int limitedMatchesLost = 0;
-    private int limitedMatchesDrawn = 0;
-    //player inventory info
-    private double vaultProgress = 0;
+    public static void output(Writer out, Parser parser) throws IOException {
+        List<Record> allRecords = parser.getRecords();
+        Parser.RankInfo rankInfo = parser.getRankInfo();
+        Parser.PlayerInventory inventory = parser.getPlayerInventory();
 
-    private List<Record> log = new ArrayList<>();
-
-    //temp
-    private String eventName;
-    private String deckId;
-    private String deckName;
-    private String deckFormat;
-
-    private String opponentName;
-    private String opponentRankClass;
-    private int opponentRankTier;
-    private double opponentRankPercentile;
-
-    private String timestamp;
-
-    private int teamId;
-    private int startingId;
-    private int winningId;
-    private int mulliganedCount;
-    private int turnCount;
-    private int secondsCount;
-
-    private int maxCreatures;
-    private int maxLands;
-    private int maxArtifactsAndEnchantments;
-    private int spellCastCount;
-
-    private void addRecord(Record record) {
-        log.removeAll(log.stream().filter(d -> record.getTimestamp().equals(d.getTimestamp())).collect(Collectors.toList()));
-        log.add(record);
-    }
-
-    public void input(Reader in) throws IOException {
-        boolean json = false;
-        String jsonText = "";
-
-        try (BufferedReader br = new BufferedReader(in)) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if ("EXIT".equals(line)) {
-                    return;
-                }
-
-                if (json) {
-                    jsonText += line;
-                    if ("}".equals(line)) {
-                        json = false;
-                        convertJson(jsonText);
-                    }
-                    if ("{".equals(line) || "(-1) Incoming Event.MatchCreated {".equals(line)) {
-                        System.err.println("e");
-                    }
-                } else {
-                    if ("{".equals(line) || "(-1) Incoming Event.MatchCreated {".equals(line)) {
-                        json = true;
-                        jsonText = "{";
-                    }
-                }
-            }
-        }
-    }
-
-    private void convertJson(String jsonText) {
-        JsonObject json = new Gson().fromJson(jsonText, JsonObject.class);
-        if (json == null) {
-            return;
-        }
-
-        if (json.has("constructedMatchesWon")) {
-            constructedMatchesWon = json.getAsJsonPrimitive("constructedMatchesWon").getAsInt();
-        }
-        if (json.has("constructedMatchesLost")) {
-            constructedMatchesLost = json.getAsJsonPrimitive("constructedMatchesLost").getAsInt();
-        }
-        if (json.has("constructedMatchesDrawn")) {
-            constructedMatchesDrawn = json.getAsJsonPrimitive("constructedMatchesDrawn").getAsInt();
-        }
-        if (json.has("limitedMatchesWon")) {
-            limitedMatchesWon = json.getAsJsonPrimitive("limitedMatchesWon").getAsInt();
-        }
-        if (json.has("limitedMatchesLost")) {
-            limitedMatchesLost = json.getAsJsonPrimitive("limitedMatchesLost").getAsInt();
-        }
-        if (json.has("limitedMatchesDrawn")) {
-            limitedMatchesDrawn = json.getAsJsonPrimitive("limitedMatchesDrawn").getAsInt();
-        }
-
-        if (json.has("vaultProgress")) {
-            vaultProgress = json.getAsJsonPrimitive("vaultProgress").getAsDouble();
-        }
-
-        if (json.has("InternalEventName")) {
-            eventName = json.getAsJsonPrimitive("InternalEventName").getAsString();
-            if (json.has("CourseDeck") && !json.get("CourseDeck").isJsonNull()) {
-                JsonObject deck = json.getAsJsonObject("CourseDeck");
-                deckId = deck.getAsJsonPrimitive("id").getAsString();
-                deckName = deck.getAsJsonPrimitive("name").getAsString();
-                deckFormat = deck.getAsJsonPrimitive("format").getAsString();
-            }
-        }
-
-        if (json.has("opponentScreenName")) {
-            opponentName = json.getAsJsonPrimitive("opponentScreenName").getAsString();
-        }
-        if (json.has("opponentRankingClass")) {
-            opponentRankClass = json.getAsJsonPrimitive("opponentRankingClass").getAsString();
-        }
-        if (json.has("opponentRankingTier")) {
-            opponentRankTier = json.getAsJsonPrimitive("opponentRankingTier").getAsInt();
-        }
-        if (json.has("opponentMythicPercentile")) {
-            opponentRankPercentile = json.getAsJsonPrimitive("opponentMythicPercentile").getAsDouble();
-        }
-
-        if (json.has("params")) {
-            JsonObject params = json.getAsJsonObject("params");
-            if (params.has("payloadObject") && !params.get("payloadObject").isJsonNull()) {
-                JsonObject payloadObject = params.getAsJsonObject("payloadObject");
-
-                //Log.Info
-                if (payloadObject.has("timestamp")) {
-                    timestamp = payloadObject.getAsJsonPrimitive("timestamp").getAsString();
-                }
-
-                // DuelScene.GameStop
-                if (payloadObject.has("winningTeamId")) {
-                    teamId = payloadObject.getAsJsonPrimitive("teamId").getAsInt();
-                    startingId = payloadObject.getAsJsonPrimitive("startingTeamId").getAsInt();
-                    winningId = payloadObject.getAsJsonPrimitive("winningTeamId").getAsInt();
-                    mulliganedCount = payloadObject.getAsJsonArray("mulliganedHands").size();
-                    turnCount = payloadObject.getAsJsonPrimitive("turnCount").getAsInt();
-                    secondsCount = payloadObject.getAsJsonPrimitive("secondsCount").getAsInt();
-                }
-
-                //"DuelScene.EndOfMatchReport"
-                if (payloadObject.has("maxCreatures")) {
-                    maxCreatures = payloadObject.getAsJsonPrimitive("maxCreatures").getAsInt();
-                    maxLands = payloadObject.getAsJsonPrimitive("maxLands").getAsInt();
-                    maxArtifactsAndEnchantments = payloadObject.getAsJsonPrimitive("maxArtifactsAndEnchantments").getAsInt();
-
-                    int spellsCastWithAutoPayCount = payloadObject.getAsJsonPrimitive("spellsCastWithAutoPayCount").getAsInt();
-                    int spellsCastWithManualManaCount = payloadObject.getAsJsonPrimitive("spellsCastWithManualManaCount").getAsInt();
-                    int spellsCastWithMixedPayManaCount = payloadObject.getAsJsonPrimitive("spellsCastWithMixedPayManaCount").getAsInt();
-                    spellCastCount = spellsCastWithAutoPayCount + spellsCastWithManualManaCount + spellsCastWithMixedPayManaCount;
-
-                    addRecord(new Record(eventName, deckId, deckName, deckFormat,
-                            opponentName, opponentRankClass, opponentRankTier, opponentRankPercentile,
-                            timestamp, teamId == startingId, teamId == winningId, mulliganedCount, turnCount, secondsCount,
-                            maxCreatures, maxLands, maxArtifactsAndEnchantments, spellCastCount));
-                }
-            }
-        }
-    }
-
-    public void output(Writer out) throws IOException {
         try (BufferedWriter bw = new BufferedWriter(out)) {
             bw.write(new SimpleDateFormat("yyyy-MM-dd hh:mm:ss").format(new Date()));
             bw.newLine();
 
-            bw.write(h2("User Info"));
+            bw.write(h2("Player Info"));
             bw.newLine();
-            bw.write("VAULT: " + vaultProgress + "%");
+
+            bw.write(h3("Inventory"));
+            List<Map.Entry<Parser.Card, Integer>> collectible = inventory.cards.entrySet().stream().filter(d -> d.getKey().collectible).collect(Collectors.toList());
+            {
+                int nextM = 17 - inventory.wcTrackPosition;
+                if (nextM <= 0) {
+                    nextM += 30;
+                }
+                int nextR = 6 - ((inventory.wcTrackPosition + 1) % 6);
+                if (nextR == nextM) {
+                    nextR += 6;
+                }
+
+                double p = 100.0 * collectible.stream().mapToInt(d -> d.getValue()).sum() / (collectible.size() * 4);
+                bw.write(table(2,
+                        "VAULT:", inventory.vaultProgress + "%",
+                        "NEXT WC Rare:", Integer.toString(nextR),
+                        "NEXT WC Mythic Rare:", Integer.toString(nextM),
+                        "Card Variety:", collectible.stream().filter(d -> d.getValue() != 0).count() + " / " + collectible.size(),
+                        "Card Collection:", String.format("%.1f", p) + "%"
+                ));
+                bw.newLine();
+            }
+            bw.write("<details>");
+            {
+                for (String set : new String[]{"Ixalan", "Dominaria", "Magic 2019", "M19 Gift Pack", "Guilds of Ravnica", "Ravnica Allegiance", "Mythic Edition"}) {
+                    bw.write(h4(set));
+
+                    List<Map.Entry<Parser.Card, Integer>> setList = collectible.stream().filter(d -> set.equals(d.getKey().set)).collect(Collectors.toList());
+                    List<Map.Entry<Parser.Card, Integer>> common = setList.stream().filter(d -> "common".equals(d.getKey().rarity)).collect(Collectors.toList());
+                    List<Map.Entry<Parser.Card, Integer>> uncommon = setList.stream().filter(d -> "uncommon".equals(d.getKey().rarity)).collect(Collectors.toList());
+                    List<Map.Entry<Parser.Card, Integer>> rare = setList.stream().filter(d -> "rare".equals(d.getKey().rarity)).collect(Collectors.toList());
+                    List<Map.Entry<Parser.Card, Integer>> mythic = setList.stream().filter(d -> "mythic".equals(d.getKey().rarity)).collect(Collectors.toList());
+                    double setP = 100.0 * setList.stream().mapToInt(d -> d.getValue()).sum() / (setList.size() * 4);
+                    double commonP = 100.0 * common.stream().mapToInt(d -> d.getValue()).sum() / (common.size() * 4);
+                    double uncommonP = 100.0 * uncommon.stream().mapToInt(d -> d.getValue()).sum() / (uncommon.size() * 4);
+                    double rareP = 100.0 * rare.stream().mapToInt(d -> d.getValue()).sum() / (rare.size() * 4);
+                    double mythicP = 100.0 * mythic.stream().mapToInt(d -> d.getValue()).sum() / (mythic.size() * 4);
+                    bw.write(table(2,
+                            "Card Variety:", setList.stream().filter(d -> d.getValue() != 0).count() + " / " + setList.size(),
+                            "Card Collection:", String.format("%.1f", setP) + "%",
+                            "Common Card Collection:", String.format("%.1f", commonP) + "%",
+                            "Uncommon Card Collection:", String.format("%.1f", uncommonP) + "%",
+                            "Rare Card Collection:", String.format("%.1f", rareP) + "%",
+                            "Mythic Rare Card Collection:", String.format("%.1f", mythicP) + "%"
+                    ));
+                }
+            }
+            bw.write("</details>");
             bw.newLine();
 
             {
                 bw.write(h3("---CONSTRUCTED---"));
 
-                double constructedWinRatio = 100.0 * constructedMatchesWon / (constructedMatchesWon + constructedMatchesLost);
+                double constructedWinRatio = 100.0 * rankInfo.constructedMatchesWon / (rankInfo.constructedMatchesWon + rankInfo.constructedMatchesLost);
                 bw.write(table(2,
-                        "WIN:", Integer.toString(constructedMatchesWon),
-                        "LOSE:", Integer.toString(constructedMatchesLost),
+                        "WIN:", Integer.toString(rankInfo.constructedMatchesWon),
+                        "LOSE:", Integer.toString(rankInfo.constructedMatchesLost),
                         // "DRAW:", Integer.toString(constructedMatchesDrawn)
                         "Winning Percentage:", String.format("%.1f", constructedWinRatio) + "%"
                 ));
@@ -274,34 +140,34 @@ public class Main {
             }
             {
                 bw.write(h3("---LIMITED---"));
-                double limitedWinRatio = 100.0 * limitedMatchesWon / (limitedMatchesWon + limitedMatchesLost);
+                double limitedWinRatio = 100.0 * rankInfo.limitedMatchesWon / (rankInfo.limitedMatchesWon + rankInfo.limitedMatchesLost);
                 bw.write(table(2,
-                        "WIN:", Integer.toString(limitedMatchesWon),
-                        "LOSE:", Integer.toString(limitedMatchesLost),
+                        "WIN:", Integer.toString(rankInfo.limitedMatchesWon),
+                        "LOSE:", Integer.toString(rankInfo.limitedMatchesLost),
                         // "DRAW:", Integer.toString(limitedMatchesDrawn)
                         "Winning Percentage:", String.format("%.1f", limitedWinRatio) + "%"
                 ));
                 bw.newLine();
             }
 
-            List<Deck> deckList = log.stream().map(d -> d.getDeckId()).distinct()
+            List<Parser.Deck> deckList = allRecords.stream().map(d -> d.getDeckId()).distinct()
                     .map(deckId -> {
-                        List<Record> deckRecord = log.stream().filter(d -> deckId.equals(d.getDeckId())).collect(Collectors.toList());
+                        List<Record> deckRecord = allRecords.stream().filter(d -> deckId.equals(d.getDeckId())).collect(Collectors.toList());
                         String deckName = deckRecord.stream().sorted(Comparator.comparing(Record::getTimestamp).reversed()).findFirst().get().getDeckName(); //最新のデッキ名
                         long win = deckRecord.stream().filter(d -> d.getWin()).count();
                         long lose = deckRecord.stream().filter(d -> !d.getWin()).count();
 
-                        return new Deck(deckId, deckName, win, lose);
-                    }).sorted(Comparator.comparing(Deck::getWinrate).reversed()).collect(Collectors.toList()); //全体の勝率順
+                        return new Parser.Deck(deckId, deckName, win, lose);
+                    }).sorted(Comparator.comparing(Parser.Deck::getWinrate).reversed()).collect(Collectors.toList()); //全体の勝率順
 
             bw.write(h2("Deck Info"));
             bw.newLine();
-            for (String event : log.stream().map(d -> d.getEventName()).distinct().collect(Collectors.toList())) {
+            for (String event : allRecords.stream().map(d -> d.getEventName()).distinct().collect(Collectors.toList())) {
                 bw.write(h3("---" + event + "---"));
                 bw.newLine();
 
-                List<Record> eventRecords = log.stream().filter(d -> event.equals(d.getEventName())).collect(Collectors.toList());
-                for (Deck deck : deckList) {
+                List<Record> eventRecords = allRecords.stream().filter(d -> event.equals(d.getEventName())).collect(Collectors.toList());
+                for (Parser.Deck deck : deckList) {
                     List<Record> records = eventRecords.stream().filter(d -> deck.getDeckId().equals(d.getDeckId())).collect(Collectors.toList());
                     if (records.isEmpty()) {
                         continue;
@@ -377,6 +243,8 @@ public class Main {
                         //List<Integer> permanents = records.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
                         List<Integer> casts = records.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
 
+                        bw.write("<br>");
+                        bw.newLine();
                         bw.write(table(2,
                                 "Average Turn:", String.format("%.1f", turn),
                                 "Average Duration:", String.format("%02d:%02d:%02d", hour, minute, second),
@@ -408,6 +276,8 @@ public class Main {
                         //List<Integer> permanents = winRecords.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
                         List<Integer> casts = winRecords.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
 
+                        bw.write("<br>");
+                        bw.newLine();
                         bw.write(table(2,
                                 "Average Turn(When you win):", String.format("%.1f", turn),
                                 "Average Duration(When you win):", String.format("%02d:%02d:%02d", hour, minute, second),
@@ -439,6 +309,8 @@ public class Main {
                         //List<Integer> permanents = loseRecords.stream().mapToInt(d -> d.getMaxArtifactsAndEnchantments()).sorted().boxed().collect(Collectors.toList());
                         List<Integer> casts = loseRecords.stream().mapToInt(d -> d.getSpellCastCount()).sorted().boxed().collect(Collectors.toList());
 
+                        bw.write("<br>");
+                        bw.newLine();
                         bw.write(table(2,
                                 "Average Turn(When you lose):", String.format("%.1f", turn),
                                 "Average Duration(When you lose):", String.format("%02d:%02d:%02d", hour, minute, second),
@@ -460,18 +332,6 @@ public class Main {
                 }
                 bw.newLine();
             }
-        }
-    }
-
-    public void loadRecord(InputStream in) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream is = new ObjectInputStream(in)) {
-            log = (List<Record>) is.readObject();
-        }
-    }
-
-    public void saveRecord(OutputStream out) throws IOException {
-        try (ObjectOutputStream os = new ObjectOutputStream(out)) {
-            os.writeObject(log);
         }
     }
 }
