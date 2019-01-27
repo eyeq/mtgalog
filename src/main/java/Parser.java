@@ -63,6 +63,8 @@ public class Parser {
     }
 
     public class PlayerInventory {
+        public int gold = 0;
+        public int gems = 0;
         public int wcTrackPosition = 0;
         public double vaultProgress = 0;
         public final Map<Card, Integer> cards = new HashMap<>();
@@ -74,6 +76,11 @@ public class Parser {
 
     private final RankInfo rankInfo = new RankInfo();
     private final PlayerInventory playerInventory = new PlayerInventory();
+
+    private int preGold = -1;
+    private int preGems = -1;
+    private double preVaultProgress = -1;
+    private int preCollectedCardCount = -1;
 
     //temp
     private String eventName;
@@ -117,6 +124,21 @@ public class Parser {
     public PlayerInventory getPlayerInventory() {
          return playerInventory;
     }
+
+    public int getDiffGold() {
+        return playerInventory.gold - preGold;
+    }
+
+    public int getDiffGems() {
+        return playerInventory.gems - preGems;
+    }
+
+    public double getDiffVaultProgress() {
+        return playerInventory.vaultProgress - preVaultProgress;
+    }
+
+    public int getPreCollectedCardCount() { return preCollectedCardCount; }
+
 
     public void loadRecord(InputStream in) throws IOException, ClassNotFoundException {
         try (ObjectInputStream is = new ObjectInputStream(in)) {
@@ -200,6 +222,9 @@ public class Parser {
                 playerInventory.cards.put(cardLibrary.get(cardId), quantity);
             }
         }
+        if(preCollectedCardCount == -1) {
+            preCollectedCardCount = playerInventory.cards.entrySet().stream().filter(d -> d.getKey().collectible).mapToInt(d -> d.getValue()).sum();
+        }
     }
 
     private void parseJson(String jsonText) {
@@ -227,11 +252,26 @@ public class Parser {
             rankInfo.limitedMatchesDrawn = json.getAsJsonPrimitive("limitedMatchesDrawn").getAsInt();
         }
 
+        if (json.has("gold")) {
+            playerInventory.gold = json.getAsJsonPrimitive("gold").getAsInt();
+            if(preGold == -1) {
+                preGold = playerInventory.gold;
+            }
+        }
+        if (json.has("gems")) {
+            playerInventory.gems = json.getAsJsonPrimitive("gems").getAsInt();
+            if(preGems == -1) {
+                preGems = playerInventory.gems;
+            }
+        }
         if (json.has("wcTrackPosition")) {
             playerInventory.wcTrackPosition = json.getAsJsonPrimitive("wcTrackPosition").getAsInt();
         }
         if (json.has("vaultProgress")) {
             playerInventory.vaultProgress = json.getAsJsonPrimitive("vaultProgress").getAsDouble();
+            if(preVaultProgress == -1) {
+                preVaultProgress = playerInventory.vaultProgress;
+            }
         }
 
         if (json.has("InternalEventName")) {

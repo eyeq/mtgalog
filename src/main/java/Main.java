@@ -70,7 +70,7 @@ public class Main {
         Parser.PlayerInventory inventory = parser.getPlayerInventory();
 
         try (BufferedWriter bw = new BufferedWriter(out)) {
-            bw.write(new SimpleDateFormat("yyyy-MM-dd hh:mm:ss").format(new Date()));
+            bw.write(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date()));
             bw.newLine();
 
             bw.write(h2("Player Info"));
@@ -88,17 +88,21 @@ public class Main {
                     nextR += 6;
                 }
 
-                double p = 100.0 * collectible.stream().mapToInt(d -> d.getValue()).sum() / (collectible.size() * 4);
-                bw.write(table(2,
-                        "VAULT:", inventory.vaultProgress + "%",
-                        "NEXT WC Rare:", Integer.toString(nextR),
-                        "NEXT WC Mythic Rare:", Integer.toString(nextM),
-                        "Card Variety:", collectible.stream().filter(d -> d.getValue() != 0).count() + " / " + collectible.size(),
-                        "Card Collection:", String.format("%.1f", p) + "%"
+                int collectedCardCount =  collectible.stream().mapToInt(d -> d.getValue()).sum();
+                double p = 100.0 * collectedCardCount / (collectible.size() * 4);
+                bw.write(table(3,
+                        "GOLD:", Integer.toString(inventory.gold), String.format("(%+d gold)", parser.getDiffGold()),
+                        "GEMS:", Integer.toString(inventory.gems), String.format("(%+d gems)", parser.getDiffGems()),
+                        "VAULT:", String.format("%3.1f", inventory.vaultProgress) + "%", String.format("(%+3.1f)", parser.getDiffVaultProgress()) + "%",
+                        "NEXT WC Rare:", Integer.toString(nextR), "",
+                        "NEXT WC Mythic Rare:", Integer.toString(nextM), "",
+                        "Card Variety:", collectible.stream().filter(d -> d.getValue() != 0).count() + " / " + collectible.size(), "",
+                        "Card Collection:", String.format("%3.1f", p) + "%", String.format("(%+d card)", (collectedCardCount - parser.getPreCollectedCardCount()))
                 ));
                 bw.newLine();
             }
             bw.write("<details>");
+            bw.newLine();
             {
                 for (String set : new String[]{"Ixalan", "Dominaria", "Magic 2019", "M19 Gift Pack", "Guilds of Ravnica", "Ravnica Allegiance", "Mythic Edition"}) {
                     bw.write(h4(set));
@@ -115,11 +119,11 @@ public class Main {
                     double mythicP = 100.0 * mythic.stream().mapToInt(d -> d.getValue()).sum() / (mythic.size() * 4);
                     bw.write(table(2,
                             "Card Variety:", setList.stream().filter(d -> d.getValue() != 0).count() + " / " + setList.size(),
-                            "Card Collection:", String.format("%.1f", setP) + "%",
-                            "Common Card Collection:", String.format("%.1f", commonP) + "%",
-                            "Uncommon Card Collection:", String.format("%.1f", uncommonP) + "%",
-                            "Rare Card Collection:", String.format("%.1f", rareP) + "%",
-                            "Mythic Rare Card Collection:", String.format("%.1f", mythicP) + "%"
+                            "Card Collection:", String.format("%3.1f", setP) + "%",
+                            "Common Card Collection:", String.format("%3.1f", commonP) + "%",
+                            "Uncommon Card Collection:", String.format("%3.1f", uncommonP) + "%",
+                            "Rare Card Collection:", String.format("%3.1f", rareP) + "%",
+                            "Mythic Rare Card Collection:", String.format("%3.1f", mythicP) + "%"
                     ));
                 }
             }
@@ -134,7 +138,7 @@ public class Main {
                         "WIN:", Integer.toString(rankInfo.constructedMatchesWon),
                         "LOSE:", Integer.toString(rankInfo.constructedMatchesLost),
                         // "DRAW:", Integer.toString(constructedMatchesDrawn)
-                        "Winning Percentage:", String.format("%.1f", constructedWinRatio) + "%"
+                        "Winning Percentage:", String.format("%3.1f", constructedWinRatio) + "%"
                 ));
                 bw.newLine();
             }
@@ -145,7 +149,7 @@ public class Main {
                         "WIN:", Integer.toString(rankInfo.limitedMatchesWon),
                         "LOSE:", Integer.toString(rankInfo.limitedMatchesLost),
                         // "DRAW:", Integer.toString(limitedMatchesDrawn)
-                        "Winning Percentage:", String.format("%.1f", limitedWinRatio) + "%"
+                        "Winning Percentage:", String.format("%3.1f", limitedWinRatio) + "%"
                 ));
                 bw.newLine();
             }
@@ -164,6 +168,8 @@ public class Main {
             bw.newLine();
             for (String event : allRecords.stream().map(d -> d.getEventName()).distinct().collect(Collectors.toList())) {
                 bw.write(h3("---" + event + "---"));
+                bw.newLine();
+                bw.write("<details>");
                 bw.newLine();
 
                 List<Record> eventRecords = allRecords.stream().filter(d -> event.equals(d.getEventName())).collect(Collectors.toList());
@@ -209,24 +215,25 @@ public class Main {
                                 "WIN:", Long.toString(win),
                                 "LOSE:", Long.toString(lose),
                                 // "DRAW:", Long.toString((records.stream().count() - win - lose))
-                                "Winning Percentage:", String.format("%.1f", winRatio) + "%",
-                                "Winning Percentage(play first):", String.format("%.1f", winRatioF) + "%",
-                                "Winning Percentage(draw first):", String.format("%.1f", winRatioA) + "%",
-                                "Winning Percentage vs Mythic Rank:", String.format("%.1f", winRatioM) + "%",
-                                "Winning Percentage vs Mythic Rank(play first):", String.format("%.1f", winRatioMF) + "%",
-                                "Winning Percentage vs Mythic Rank(draw first):", String.format("%.1f", winRatioMA) + "%"
+                                "Winning Percentage:", String.format("%3.1f", winRatio) + "%",
+                                "Winning Percentage(play first):", String.format("%3.1f", winRatioF) + "%",
+                                "Winning Percentage(draw first):", String.format("%3.1f", winRatioA) + "%",
+                                "Winning Percentage vs Mythic Rank:", String.format("%3.1f", winRatioM) + "%",
+                                "Winning Percentage vs Mythic Rank(play first):", String.format("%3.1f", winRatioMF) + "%",
+                                "Winning Percentage vs Mythic Rank(draw first):", String.format("%3.1f", winRatioMA) + "%"
                         ));
                         bw.newLine();
                     }
                     bw.write("<details>");
+                    bw.newLine();
                     {
                         List<Record> mulliganRecords = records.stream().filter(d -> d.getMulliganedCount() != 0).collect(Collectors.toList());
                         double mulliganRatio = 100.0 * mulliganRecords.size() / records.size();
                         double mulliganCount = mulliganRecords.isEmpty() ? Double.NaN : mulliganRecords.stream().mapToInt(d -> d.getMulliganedCount()).average().getAsDouble();
 
                         bw.write(table(2,
-                                "Mulligan Percentage:", String.format("%.1f", mulliganRatio) + "%",
-                                "Average Mulligan Count when to Mulligan:", String.format("%.1f", mulliganCount)
+                                "Mulligan Percentage:", String.format("%3.1f", mulliganRatio) + "%",
+                                "Average Mulligan Count when to Mulligan:", String.format("%3.1f", mulliganCount)
                         ));
                         bw.newLine();
                     }
@@ -246,17 +253,17 @@ public class Main {
                         bw.write("<br>");
                         bw.newLine();
                         bw.write(table(2,
-                                "Average Turn:", String.format("%.1f", turn),
+                                "Average Turn:", String.format("%3.1f", turn),
                                 "Average Duration:", String.format("%02d:%02d:%02d", hour, minute, second),
 
-                                "Average Max Lands:", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
-                                "Average Max Creatures:", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
-                                //"Average Max Artifacts and Enchantments:", String.format("%.1f", permanent),
-                                "Average Spell Cast Count:", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Lands:", String.format("%3.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures:", String.format("%3.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments:", String.format("%3.1f", permanent),
+                                "Average Spell Cast Count:", String.format("%3.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
 
                                 "Median Max Lands:", Integer.toString(lands.get(lands.size() / 2)),
                                 "Median Max Creatures:", Integer.toString(creatures.get(creatures.size() / 2)),
-                                //"Median Max Artifacts and Enchantments:", String.format("%.1f", permanent),
+                                //"Median Max Artifacts and Enchantments:", String.format("%3.1f", permanent),
                                 "Median Spell Cast Count:", Integer.toString(casts.get(casts.size() / 2))
                         ));
                         bw.newLine();
@@ -279,17 +286,17 @@ public class Main {
                         bw.write("<br>");
                         bw.newLine();
                         bw.write(table(2,
-                                "Average Turn(When you win):", String.format("%.1f", turn),
+                                "Average Turn(When you win):", String.format("%3.1f", turn),
                                 "Average Duration(When you win):", String.format("%02d:%02d:%02d", hour, minute, second),
 
-                                "Average Max Lands(When you win):", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
-                                "Average Max Creatures(When you win):", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
-                                //"Average Max Artifacts and Enchantments(When you win):", String.format("%.1f", permanent),
-                                "Average Spell Cast Count(When you win):", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Lands(When you win):", String.format("%3.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures(When you win):", String.format("%3.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments(When you win):", String.format("%3.1f", permanent),
+                                "Average Spell Cast Count(When you win):", String.format("%3.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
 
                                 "Median Max Lands(When you win):", Integer.toString(lands.get(lands.size() / 2)),
                                 "Median Max Creatures(When you win):", Integer.toString(creatures.get(creatures.size() / 2)),
-                                //"Median Max Artifacts and Enchantments(When you win):", String.format("%.1f", permanent),
+                                //"Median Max Artifacts and Enchantments(When you win):", String.format("%3.1f", permanent),
                                 "Median Spell Cast Count(When you win):", Integer.toString(casts.get(casts.size() / 2))
                         ));
                         bw.newLine();
@@ -312,17 +319,17 @@ public class Main {
                         bw.write("<br>");
                         bw.newLine();
                         bw.write(table(2,
-                                "Average Turn(When you lose):", String.format("%.1f", turn),
+                                "Average Turn(When you lose):", String.format("%3.1f", turn),
                                 "Average Duration(When you lose):", String.format("%02d:%02d:%02d", hour, minute, second),
 
-                                "Average Max Lands(When you lose):", String.format("%.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
-                                "Average Max Creatures(When you lose):", String.format("%.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
-                                //"Average Max Artifacts and Enchantments(When you lose):", String.format("%.1f", permanent),
-                                "Average Spell Cast Count(When you lose):", String.format("%.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Lands(When you lose):", String.format("%3.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                                "Average Max Creatures(When you lose):", String.format("%3.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                                //"Average Max Artifacts and Enchantments(When you lose):", String.format("%3.1f", permanent),
+                                "Average Spell Cast Count(When you lose):", String.format("%3.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
 
                                 "Median Max Lands(When you lose):", Integer.toString(lands.get(lands.size() / 2)),
                                 "Median Max Creatures(When you lose):", Integer.toString(creatures.get(creatures.size() / 2)),
-                                //"Median Max Artifacts and Enchantments(When you lose):", String.format("%.1f", permanent),
+                                //"Median Max Artifacts and Enchantments(When you lose):", String.format("%3.1f", permanent),
                                 "Median Spell Cast Count(When you lose):", Integer.toString(casts.get(casts.size() / 2))
                         ));
                         bw.newLine();
@@ -330,6 +337,7 @@ public class Main {
                     bw.write("</details>");
                     bw.newLine();
                 }
+                bw.write("</details>");
                 bw.newLine();
             }
         }
