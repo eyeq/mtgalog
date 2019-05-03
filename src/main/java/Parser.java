@@ -3,7 +3,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.io.*;
+import java.security.KeyStore;
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class Parser {
 
@@ -71,6 +73,8 @@ public class Parser {
     }
 
     private final Map<Integer, Card> cardLibrary = new HashMap<>();
+    private final List<String> setList = new ArrayList<>();
+    private final List<String> eventList = new ArrayList<>();
 
     private final Map<String, Record> records = new HashMap<>();
 
@@ -80,7 +84,7 @@ public class Parser {
     private int preGold = -1;
     private int preGems = -1;
     private double preVaultProgress = -1;
-    private int preCollectedCardCount = -1;
+    private Map<Card, Integer> preCards = null;
 
     //temp
     private String eventName;
@@ -137,22 +141,28 @@ public class Parser {
         return playerInventory.vaultProgress - preVaultProgress;
     }
 
-    public int getPreCollectedCardCount() { return preCollectedCardCount; }
-
-
-    public void loadRecord(InputStream in) throws IOException, ClassNotFoundException {
-        try (ObjectInputStream is = new ObjectInputStream(in)) {
-            addRecords((List<Record>) is.readObject());
-        }
+    public Map<Card, Integer> getDiffCards() {
+        return playerInventory.cards.entrySet().stream().filter(d -> !preCards.containsKey(d.getKey()) || preCards.get(d.getKey()).intValue() != d.getValue().intValue())
+                .collect(Collectors.toMap(Map.Entry::getKey, d -> d.getValue() - preCards.getOrDefault(d.getKey(), 0)));
     }
 
-    public void saveRecord(OutputStream out) throws IOException {
-        try (ObjectOutputStream os = new ObjectOutputStream(out)) {
-            os.writeObject(getRecords());
-        }
+    public List<String> getSetList() {
+        return this.setList;
     }
 
-    public void loadCardLibrary(Reader in) {
+    public List<String> getEventList() {
+        return this.eventList;
+    }
+
+    public void loadRecord(ObjectInputStream is) throws IOException, ClassNotFoundException {
+        addRecords((List<Record>) is.readObject());
+    }
+
+    public void saveRecord(ObjectOutputStream os) throws IOException {
+        os.writeObject(getRecords());
+    }
+
+    public void loadCardData(Reader in) {
         JsonObject json = new Gson().fromJson(in, JsonObject.class);
         for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
             int cardId = Integer.parseInt(entry.getKey());
@@ -170,6 +180,24 @@ public class Parser {
             Card c = new Card(name, set, cost, cmc, rarity, collectible, dfcId, rank);
             cardLibrary.put(cardId, c);
             playerInventory.cards.put(c, 0);
+        }
+    }
+
+    public void loadSetData(Reader in) {
+        JsonObject json = new Gson().fromJson(in, JsonObject.class);
+        for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
+            String fullName = entry.getKey();
+
+            setList.add(fullName);
+        }
+    }
+
+    public void loadEventData(Reader in) {
+        JsonObject json = new Gson().fromJson(in, JsonObject.class);
+        for (Map.Entry<String, JsonElement> entry : json.entrySet()) {
+            String fullName = entry.getKey();
+
+            eventList.add(fullName);
         }
     }
 
@@ -222,8 +250,8 @@ public class Parser {
                 playerInventory.cards.put(cardLibrary.get(cardId), quantity);
             }
         }
-        if(preCollectedCardCount == -1) {
-            preCollectedCardCount = playerInventory.cards.entrySet().stream().filter(d -> d.getKey().collectible).mapToInt(d -> d.getValue()).sum();
+        if(preCards == null) {
+            preCards = new HashMap<>(playerInventory.cards);
         }
     }
 

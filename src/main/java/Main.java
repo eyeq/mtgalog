@@ -1,6 +1,5 @@
 import javax.swing.*;
 import java.io.*;
-import java.nio.Buffer;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
@@ -11,6 +10,7 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
 
 public class Main {
     public static void main(String[] args) throws IOException {
@@ -53,10 +53,22 @@ public class Main {
 
                 Parser parser = new Parser();
                 try {
-                    parser.loadRecord(Files.newInputStream(Paths.get("data.txt")));
-                    parser.loadCardLibrary(new FileReader("cardlist.json"));
+                    try(ObjectInputStream is = new ObjectInputStream(Files.newInputStream(Paths.get("data.txt")))) {
+                        parser.loadRecord(is);
+                    }
+                    try(FileReader reader = new FileReader("data\\card.json")) {
+                        parser.loadCardData(reader);
+                    }
+                    try (FileReader reader = new FileReader("data\\set.json")) {
+                        parser.loadSetData(reader);
+                    }
+                    try(FileReader reader = new FileReader("data\\event.json")) {
+                        parser.loadEventData(reader);
+                    }
 
-                    parser.readLog(new FileReader(target));
+                    try(FileReader reader = new FileReader(target)) {
+                        parser.readLog(reader);
+                    }
                 } catch (Exception e) {
                     try (BufferedWriter bw = Files.newBufferedWriter(Paths.get("output.html"), StandardCharsets.UTF_8)) {
                         log(bw, e);
@@ -69,7 +81,10 @@ public class Main {
 
                 try (BufferedWriter bw = Files.newBufferedWriter(Paths.get("output.html"), StandardCharsets.UTF_8)) {
                     output(bw, parser);
-                    parser.saveRecord(new FileOutputStream(new File("data.txt")));
+
+                    try (ObjectOutputStream os = new ObjectOutputStream(new FileOutputStream(new File("data.txt")))) {
+                        parser.saveRecord(os);
+                    }
                 } catch (Exception e) {
                     try (BufferedWriter bw = Files.newBufferedWriter(Paths.get("output.html"), StandardCharsets.UTF_8)) {
                         log(bw, e);
@@ -110,7 +125,7 @@ public class Main {
         return IntStream.range(0, tds.length / columns).mapToObj(i -> "<td>" + String.join("</td><td>", td(columns, i, tds)) + "</td>").collect(Collectors.toList());
     }
 
-    private static String table(int columns, String col,  String... tds) {
+    private static String table(int columns, String col, String... tds) {
         String[] t = Arrays.stream(tds).map(d -> "<u>" + ("NaN%".equals(d) ? "--.-%" : d) + "</u>").toArray(String[]::new);
         return "<table>" + col + "<tr>" + String.join("</tr><tr>", tr(columns, t)) + "</tr></table>";
     }
@@ -120,7 +135,7 @@ public class Main {
     }
 
     private static void output(BufferedWriter bw, Parser parser) throws IOException {
-        List<Record> allRecords = parser.getRecords();
+        List<Record> allRecords = parser.getRecords().stream().filter(d -> d.getTurnCount() != 0).collect(Collectors.toList()); //不戦勝・不戦敗は除く
         Parser.RankInfo rankInfo = parser.getRankInfo();
         Parser.PlayerInventory inventory = parser.getPlayerInventory();
 
@@ -132,6 +147,7 @@ public class Main {
 
         bw.write(h3("Inventory"));
         List<Map.Entry<Parser.Card, Integer>> collectible = inventory.cards.entrySet().stream().filter(d -> d.getKey().collectible).collect(Collectors.toList());
+        List<Map.Entry<Parser.Card, Integer>> addedCollectible = parser.getDiffCards().entrySet().stream().filter(d -> d.getKey().collectible).collect(Collectors.toList());
         {
             int nextM = 17 - inventory.wcTrackPosition;
             if (nextM <= 0) {
@@ -144,6 +160,7 @@ public class Main {
 
             int collectedCardCount = collectible.stream().mapToInt(d -> d.getValue()).sum();
             double p = 100.0 * collectedCardCount / (collectible.size() * 4);
+            int addedCollectedCardCount = addedCollectible.stream().mapToInt(d -> d.getValue()).sum();
             bw.write(table(3,
                     "<col width='420'><col width='200'><col width='200'>",
                     "", "<b>Retention</b>", "<b>(Change)</b>",
@@ -153,14 +170,14 @@ public class Main {
                     "NEXT WC Rare:", Integer.toString(nextR), "",
                     "NEXT WC Mythic Rare:", Integer.toString(nextM), "",
                     "Card Variety:", collectible.stream().filter(d -> d.getValue() != 0).count() + " / " + collectible.size(), "",
-                    "Card Collection:", String.format("%3.1f%%", p), String.format("(%+d card)", (collectedCardCount - parser.getPreCollectedCardCount()))
+                    "Card Collection:", String.format("%3.1f%%", p), String.format("(%+d card)", addedCollectedCardCount)
             ));
             bw.newLine();
         }
-        bw.write("<details><div style='padding-left: 40px;'>");
+        bw.write("<details><summary style='cursor: pointer;'><b>Card Set</b></summary><div style='padding-left: 40px;'>");
         bw.newLine();
         {
-            for (String set : new String[]{"Ixalan", "Dominaria", "Magic 2019", "M19 Gift Pack", "Guilds of Ravnica", "Ravnica Allegiance", "Mythic Edition"}) {
+            for (String set : parser.getSetList()) {
                 bw.write(h4(set));
 
                 List<Map.Entry<Parser.Card, Integer>> setList = collectible.stream().filter(d -> set.equals(d.getKey().set)).collect(Collectors.toList());
@@ -213,25 +230,29 @@ public class Main {
             bw.newLine();
         }
 
-        List<Parser.Deck> deckList = allRecords.stream().map(d -> d.getDeckId()).distinct()
-                .map(deckId -> {
-                    List<Record> deckRecord = allRecords.stream().filter(d -> deckId.equals(d.getDeckId())).collect(Collectors.toList());
-                    String deckName = deckRecord.stream().sorted(Comparator.comparing(Record::getTimestamp).reversed()).findFirst().get().getDeckName(); //最新のデッキ名
-                    long win = deckRecord.stream().filter(d -> d.getWin()).count();
-                    long lose = deckRecord.stream().filter(d -> !d.getWin()).count();
-
-                    return new Parser.Deck(deckId, deckName, win, lose);
-                }).sorted(Comparator.comparing(Parser.Deck::getWinrate).reversed()).collect(Collectors.toList()); //全体の勝率順
-
         bw.write(h2("Deck Info"));
         bw.newLine();
-        for (String event : allRecords.stream().map(d -> d.getEventName()).distinct().collect(Collectors.toList())) {
+
+        List<String> deckIdList = allRecords.stream().map(d -> d.getDeckId()).distinct().collect(Collectors.toList());
+        for (String event : Stream.concat(parser.getEventList().stream(), allRecords.stream().map(d -> d.getEventName()).sorted()).distinct().collect(Collectors.toList())) {
             bw.write(h3("---" + event + "---"));
             bw.newLine();
-            bw.write("<details><div style='padding-left: 40px;'>");
+            bw.write("<details style='background: lightcyan;'><summary style='cursor: pointer;'><b>Win-Lose Records</b></summary><div style='padding-left: 40px;'>");
             bw.newLine();
 
             List<Record> eventRecords = allRecords.stream().filter(d -> event.equals(d.getEventName())).collect(Collectors.toList());
+
+            //各イベントでの勝率順
+            List<Parser.Deck> deckList = deckIdList.stream().map(deckId -> {
+                String deckName = allRecords.stream().filter(d -> deckId.equals(d.getDeckId())).sorted(Comparator.comparing(Record::getTimestamp).reversed()).findFirst().get().getDeckName(); //最新のデッキ名
+
+                List<Record> deckRecord = eventRecords.stream().filter(d -> deckId.equals(d.getDeckId())).collect(Collectors.toList());
+                long win = deckRecord.stream().filter(d -> d.getWin()).count();
+                long lose = deckRecord.stream().filter(d -> !d.getWin()).count();
+
+                return new Parser.Deck(deckId, deckName, win, lose);
+            }).sorted(Comparator.comparing(Parser.Deck::getWinrate).reversed()).collect(Collectors.toList());
+
             for (Parser.Deck deck : deckList) {
                 List<Record> records = eventRecords.stream().filter(d -> deck.getDeckId().equals(d.getDeckId())).collect(Collectors.toList());
                 if (records.isEmpty()) {
@@ -285,7 +306,7 @@ public class Main {
                     bw.newLine();
                 }
 
-                bw.write("<details><div style='padding-left: 40px;'>");
+                bw.write("<details><summary style='cursor: pointer;'><b>Detailed Records</b></summary><div style='padding-left: 40px;'>");
                 {
                     //Total
                     List<Record> mulliganRecords = records.stream().filter(d -> d.getMulliganedCount() != 0).collect(Collectors.toList());
@@ -306,7 +327,6 @@ public class Main {
 
                     //Win
                     double turnW = 0;
-                    int durationW = 0;
                     int hourW = 0;
                     int minuteW = 0;
                     int secondW = 0;
@@ -316,10 +336,10 @@ public class Main {
                     List<Integer> castsW = Arrays.asList(0);
 
                     List<Record> winRecords = records.stream().filter(d -> d.getWin()).collect(Collectors.toList());
-                    if(!winRecords.isEmpty()) {
+                    if (!winRecords.isEmpty()) {
                         turnW = winRecords.stream().mapToInt(d -> d.getTurnCount()).average().getAsDouble();
 
-                        durationW = (int) winRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
+                        int durationW = (int) winRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
                         hourW = durationW / 3600;
                         minuteW = (durationW % 3600) / 60;
                         secondW = (durationW % 3600) % 60;
@@ -332,7 +352,6 @@ public class Main {
 
                     //Lose
                     double turnL = 0;
-                    int durationL = 0;
                     int hourL = 0;
                     int minuteL = 0;
                     int secondL = 0;
@@ -342,10 +361,10 @@ public class Main {
                     List<Integer> castsL = Arrays.asList(0);
 
                     List<Record> loseRecords = records.stream().filter(d -> !d.getWin()).collect(Collectors.toList());
-                    if(!loseRecords.isEmpty()) {
+                    if (!loseRecords.isEmpty()) {
                         turnL = loseRecords.stream().mapToInt(d -> d.getTurnCount()).average().getAsDouble();
 
-                        durationL = (int) loseRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
+                        int durationL = (int) loseRecords.stream().mapToInt(d -> d.getSecondsCount()).average().getAsDouble();
                         hourL = durationL / 3600;
                         minuteL = (durationL % 3600) / 60;
                         secondL = (durationL % 3600) % 60;
@@ -360,52 +379,52 @@ public class Main {
                             "<col width='340'><col width='100'><col width='100'><col width='100'>",
                             "", "<b>Total</b>", "<b>withWin</b>", "<b>withLose</b>",
                             "Mulligan Percentage:",
-                                String.format("%3.1f%%", mulliganRatio), "", "",
+                            String.format("%3.1f%%", mulliganRatio), "", "",
                             "Average Mulligan Count when to Mulligan:",
-                                String.format("%3.1f", mulliganCount), "", "",
+                            String.format("%3.1f", mulliganCount), "", "",
 
                             "Average Turn:",
-                                String.format("%3.1f", turn),
-                                String.format("%3.1f", turnW),
-                                String.format("%3.1f", turnL),
+                            String.format("%3.1f", turn),
+                            String.format("%3.1f", turnW),
+                            String.format("%3.1f", turnL),
                             "Average Duration:",
-                                String.format("%02d:%02d:%02d", hour, minute, second),
-                                String.format("%02d:%02d:%02d", hourW, minuteW, secondW),
-                                String.format("%02d:%02d:%02d", hourL, minuteL, secondL),
+                            String.format("%02d:%02d:%02d", hour, minute, second),
+                            String.format("%02d:%02d:%02d", hourW, minuteW, secondW),
+                            String.format("%02d:%02d:%02d", hourL, minuteL, secondL),
 
                             "Average Max Lands:",
-                                String.format("%3.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", landsW.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", landsL.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", lands.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", landsW.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", landsL.stream().mapToInt(d -> d).average().getAsDouble()),
                             "Average Max Creatures:",
-                                String.format("%3.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", creaturesW.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", creaturesL.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", creatures.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", creaturesW.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", creaturesL.stream().mapToInt(d -> d).average().getAsDouble()),
                             "Average Max Artifacts and Enchantments:",
-                                String.format("%3.1f", permanents.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", permanentsW.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", permanentsL.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", permanents.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", permanentsW.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", permanentsL.stream().mapToInt(d -> d).average().getAsDouble()),
                             "Average Spell Cast Count:",
-                                String.format("%3.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", castsW.stream().mapToInt(d -> d).average().getAsDouble()),
-                                String.format("%3.1f", castsL.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", casts.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", castsW.stream().mapToInt(d -> d).average().getAsDouble()),
+                            String.format("%3.1f", castsL.stream().mapToInt(d -> d).average().getAsDouble()),
 
                             "Median Max Lands:",
-                                Integer.toString(lands.get(lands.size() / 2)),
-                                Integer.toString(landsW.get(landsW.size() / 2)),
-                                Integer.toString(landsL.get(landsL.size() / 2)),
+                            Integer.toString(lands.get(lands.size() / 2)),
+                            Integer.toString(landsW.get(landsW.size() / 2)),
+                            Integer.toString(landsL.get(landsL.size() / 2)),
                             "Median Max Creatures:",
-                                Integer.toString(creatures.get(creatures.size() / 2)),
-                                Integer.toString(creaturesW.get(creaturesW.size() / 2)),
-                                Integer.toString(creaturesL.get(creaturesL.size() / 2)),
+                            Integer.toString(creatures.get(creatures.size() / 2)),
+                            Integer.toString(creaturesW.get(creaturesW.size() / 2)),
+                            Integer.toString(creaturesL.get(creaturesL.size() / 2)),
                             "Median Max Artifacts and Enchantments:",
-                                Integer.toString(permanents.get(permanents.size() / 2)),
-                                Integer.toString(permanentsW.get(permanentsW.size() / 2)),
-                                Integer.toString(permanentsL.get(permanentsL.size() / 2)),
+                            Integer.toString(permanents.get(permanents.size() / 2)),
+                            Integer.toString(permanentsW.get(permanentsW.size() / 2)),
+                            Integer.toString(permanentsL.get(permanentsL.size() / 2)),
                             "Median Spell Cast Count:",
-                                Integer.toString(casts.get(casts.size() / 2)),
-                                Integer.toString(castsW.get(castsW.size() / 2)),
-                                Integer.toString(castsL.get(castsL.size() / 2))
+                            Integer.toString(casts.get(casts.size() / 2)),
+                            Integer.toString(castsW.get(castsW.size() / 2)),
+                            Integer.toString(castsL.get(castsL.size() / 2))
                     ));
                     bw.newLine();
                 }

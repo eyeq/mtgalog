@@ -1,0 +1,82 @@
+{
+    "Ixalan": {
+        "collation": 100005,
+        "scryfall": "xln",
+        "code": "XLN",
+        "arenacode": "XLN",
+        "tile": 66433,
+        "release": "2017-09-29"
+    },
+    "Rivals of Ixalan": {
+        "collation": 100006,
+        "scryfall": "rix",
+        "code": "RIX",
+        "arenacode": "RIX",
+        "tile": 66937,
+        "release": "2018-01-19"
+    },
+    "Dominaria": {
+        "collation": 100007,
+        "scryfall": "dom",
+        "code": "DOM",
+        "arenacode": "DAR",
+        "tile": 67106,
+        "release": "2018-04-27"
+    },
+    "Core Set 2019": {
+        "collation": 100008,
+        "scryfall": "m19",
+        "code": "M19",
+        "arenacode": "M19",
+        "tile": 68116,
+        "release": "2018-07-13"
+    },
+    "Arena": {
+        "collation": false,
+        "scryfall": "ana",
+        "code": "ANA",
+        "arenacode": "ANA",
+        "tile": 67106,
+        "release": "2018-07-14"
+    },
+    "Guilds of Ravnica": {
+        "collation": 100009,
+        "scryfall": "grn",
+        "code": "GRN",
+        "arenacode": "GRN",
+        "tile": 68674,
+        "release": "2018-10-05"
+    },
+    "Mythic Edition": {
+        "collation": false,
+        "scryfall": "med",
+        "code": "MED",
+        "arenacode": "MED",
+        "tile": 68674,
+        "release": "2018-10-06"
+    },
+    "M19 Gift Pack": {
+        "collation": false,
+        "scryfall": "pgp1",
+        "code": "G18",
+        "arenacode": "G18",
+        "tile": 68116,
+        "release": "2018-07-13"
+    },
+    "Ravnica Allegiance": {
+        "collation": 100010,
+        "scryfall": "rna",
+        "code": "RNA",
+        "arenacode": "RNA",
+        "tile": 69294,
+        "release": "2019-01-25"
+    },
+    "War of the Spark": {
+        "collation": 100013,
+        "scryfall": "war",
+        "code": "WAR",
+        "arenacode": "WAR",
+        "tile": 69656,
+        "release": "2019-05-03"
+    }
+}
